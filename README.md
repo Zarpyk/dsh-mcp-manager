@@ -8,6 +8,8 @@ Modelled on the idea of `dsh-skills-manager`, but for MCP servers instead of ski
 
 Distributed as **`@zarpyk/dsh-mcp-manager`** (MIT). Source: <https://github.com/Zarpyk/dsh-mcp-manager>.
 
+![The MCP Manager settings page in the dark theme](assets/settings-page.jpg)
+
 ## What it does
 
 - **Discovers** MCP servers from the config files of DeepSeek Harness, Claude Desktop / Claude Code, Cursor,
