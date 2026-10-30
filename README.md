@@ -31,6 +31,24 @@ Distributed as **`@zarpyk/dsh-mcp-manager`** (MIT). Source: <https://github.com/
 It also registers six agent tools so the model can inspect and maintain the same inventory:
 `mcp_inventory`, `mcp_probe`, `mcp_save_server`, `mcp_expose_server`, `mcp_export_config`, `mcp_remove_server`.
 
+## Chat command
+
+`/mcp` turns exposure on without opening the settings page:
+
+```text
+/mcp                    what is in the pool and what is exposed right now
+/mcp list               every pool server, its transport and exposure state
+/mcp on <name>          keep a session open and publish its tools to this chat
+/mcp <name>             shorthand for /mcp on <name>
+/mcp off <name>         close the session and unregister its tools
+/mcp tools <name>       the tool names currently published
+/mcp test <name>        run the MCP handshake and report latency and tools
+```
+
+The outcome renders in the conversation and never enters the model's context. Aliases: `ls`, `enable`,
+`disable`, `probe`. Only the plugin's own pool can be exposed — discovered servers stay read-only until you
+copy them into the pool.
+
 ## Where it shows up
 
 Two entry points, both disabled independently if their slot is unavailable:
@@ -113,7 +131,7 @@ lib/probe.js       real MCP client (stdio, streamable HTTP, legacy SSE)
 lib/bridge.js      keeps exposed pool servers connected and registers their tools
 lib/state.js       pool state file
 lib/discovery.js   file scanning and normalisation
-lib/index.js       host half: HTTP routes, actions, agent tools
+lib/index.js       host half: HTTP routes, actions, agent tools, the /mcp command
 lib/client.js      web half: settings page (plain JS, no build step)
 ```
 

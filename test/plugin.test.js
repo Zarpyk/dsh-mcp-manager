@@ -14,6 +14,7 @@ const API = "/api/dsh-mcp-manager";
 function createCtx() {
   const routes = new Map();
   const tools = new Map();
+  const commands = new Map();
   const ctx = {
     connection: {
       fetch: {
@@ -29,6 +30,12 @@ function createCtx() {
         return () => tools.delete(definition.name);
       },
     },
+    commands: {
+      register(definition) {
+        commands.set(definition.name, definition);
+        return () => commands.delete(definition.name);
+      },
+    },
     effect(callback) {
       const dispose = callback();
       return () => dispose?.();
@@ -38,7 +45,7 @@ function createCtx() {
     },
     logger: () => null,
   };
-  return { ctx, routes, tools };
+  return { ctx, routes, tools, commands };
 }
 
 function setupSandbox() {
@@ -93,7 +100,7 @@ async function waitFor(predicate, timeoutMs = 8000) {
 
 test("the plugin exports the cordis contract", () => {
   assert.equal(name, "mcp-manager");
-  assert.deepEqual(inject, ["connection", "tools"]);
+  assert.deepEqual(inject, ["connection", "tools", "commands"]);
   assert.equal(typeof apply, "function");
 });
 
@@ -172,6 +179,56 @@ test("state, save, probe, toggle, delete, restore and export round-trip", async 
   const emptied = await callRoute(routes, "POST", "action", { action: "empty-trash" });
   assert.equal(emptied.json.ok, true);
   assert.deepEqual(emptied.json.data.snapshot.trash, []);
+});
+
+test("/mcp command can expose a pool server without leaving the chat", async (t) => {
+  setupSandbox();
+  const { ctx, tools, commands } = createCtx();
+  apply(ctx, {});
+  t.after(() => {
+    for (const dispose of [...tools.values()].map((definition) => definition.dispose).filter(Boolean)) dispose();
+  });
+
+  const command = commands.get("mcp");
+  assert.ok(command, "/mcp was not registered");
+  assert.equal(command.name, "mcp");
+
+  const empty = await command.handler({ rawInput: "" });
+  assert.equal(empty.kind, "success");
+  assert.match(empty.text, /pool is empty/);
+
+  await tools.get("mcp_save_server").execute({ name: "cmd-server", transport: "stdio", command: process.execPath, args: [FAKE_STDIO] });
+
+  const listed = await command.handler({ rawInput: " list" });
+  assert.equal(listed.kind, "success", listed.text);
+  assert.match(listed.text, /cmd-server \[stdio\] enabled — not exposed/);
+
+  const exposed = await command.handler({ rawInput: " cmd-server" });
+  assert.equal(exposed.kind, "success", exposed.text);
+  assert.match(exposed.text, /mcp_cmd_server_echo/);
+  assert.ok(tools.has("mcp_cmd_server_echo"), "the command did not publish the server tools");
+
+  const published = await command.handler({ rawInput: "tools cmd-server" });
+  assert.match(published.text, /server tool: echo/);
+
+  const tested = await command.handler({ rawInput: "test cmd-server" });
+  assert.equal(tested.kind, "success", tested.text);
+  assert.match(tested.text, /fake-server/);
+
+  const status = await command.handler({ rawInput: "status" });
+  assert.match(status.text, /1 pool server\(s\), 1 exposed/);
+
+  const hidden = await command.handler({ rawInput: " off cmd-server" });
+  assert.equal(hidden.kind, "success", hidden.text);
+  assert.ok(await waitFor(() => !tools.has("mcp_cmd_server_echo")), "the command left the tools registered");
+
+  const missing = await command.handler({ rawInput: "on nope" });
+  assert.equal(missing.kind, "error");
+  assert.match(missing.text, /No pool server named "nope"/);
+
+  const unknown = await command.handler({ rawInput: "nope" });
+  assert.equal(unknown.kind, "error");
+  assert.match(unknown.text, /Unknown command "nope"/);
 });
 
 test("import accepts a bare name -> server map", async () => {
