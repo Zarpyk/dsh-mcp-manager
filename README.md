@@ -19,13 +19,17 @@ Distributed as **`@zarpyk/dsh-mcp-manager`** (MIT). Source: <https://github.com/
   exposes, over stdio, streamable HTTP or legacy SSE. Failures come with a plain-English hint
   (missing executable, 401, DNS, certificate, timeout, unsupported protocol version).
 - **Manages its own pool**: create, edit, enable/disable, soft-delete to trash, restore and export servers.
+- **Exposes tools to the agent**: turn the bridge on for a pool server and every tool it publishes is
+  registered with the harness as `mcp_<server>_<tool>`, callable directly from the conversation — no separate
+  MCP connector plugin needed. Sessions reopen automatically when the server changes and follow
+  `notifications/tools/list_changed`.
 - **Exports** the pool as `mcpServers` JSON, VS Code `servers` JSON or Codex `config.toml`.
 - **Imports** an existing config document by pasting it.
 - **Never rewrites other applications' files.** Discovered entries are strictly read-only; the pool lives in
   the plugin's own state file.
 
-It also registers five agent tools so the model can inspect and maintain the same inventory:
-`mcp_inventory`, `mcp_probe`, `mcp_save_server`, `mcp_export_config`, `mcp_remove_server`.
+It also registers six agent tools so the model can inspect and maintain the same inventory:
+`mcp_inventory`, `mcp_probe`, `mcp_save_server`, `mcp_expose_server`, `mcp_export_config`, `mcp_remove_server`.
 
 ## Where it shows up
 
@@ -87,8 +91,8 @@ The page talks to the host half over two routes, registered on the plugin's own 
 Every `POST` must carry `x-dsh-mcp-manager: 1`, a JSON content type and a same-origin `Origin` header when one
 is sent; anything else is rejected with `403` / `415`.
 
-Actions: `refresh`, `probe`, `spec`, `save`, `set-enabled`, `delete`, `restore`, `purge`, `empty-trash`,
-`import`, `export`.
+Actions: `refresh`, `probe`, `spec`, `save`, `set-enabled`, `set-expose`, `delete`, `restore`, `purge`,
+`empty-trash`, `import`, `export`.
 
 Responses are `{ "ok": true, "data": … }` or `{ "ok": false, "error": "…", "code": "…" }`.
 
@@ -106,6 +110,7 @@ Responses are `{ "ok": true, "data": … }` or `{ "ok": false, "error": "…", "
 lib/sources.js     where MCP configs live, per client
 lib/parse.js       JSON/TOML config parsing, normalisation, masking
 lib/probe.js       real MCP client (stdio, streamable HTTP, legacy SSE)
+lib/bridge.js      keeps exposed pool servers connected and registers their tools
 lib/state.js       pool state file
 lib/discovery.js   file scanning and normalisation
 lib/index.js       host half: HTTP routes, actions, agent tools
@@ -115,7 +120,7 @@ lib/client.js      web half: settings page (plain JS, no build step)
 Tests use the Node test runner and need no dependencies:
 
 ```sh
-node --test test/parse.test.js test/probe.test.js test/plugin.test.js test/client.test.js test/render.test.js
+node --test test/parse.test.js test/probe.test.js test/plugin.test.js test/client.test.js test/render.test.js test/bridge.test.js
 ```
 
 `test/render.test.js` renders the settings page with a tiny React substitute and a fixture snapshot, so the
@@ -125,8 +130,11 @@ tests point `HOME` and `DSH_HOME` at a temporary directory).
 
 ## Limitations
 
-- It does not install servers into the Harness MCP Connector. That stays with the official connector plugin;
-  use **Copy JSON** / **Export** to move definitions there.
+- Tool exposure covers **pool** servers (the plugin's own store). Servers found in other clients' config files
+  stay read-only: use **Copy to pool** first, then expose them.
+- Exposure supports stdio and streamable HTTP servers. Legacy SSE endpoints can be probed but not exposed yet.
+- Live tool refresh relies on `notifications/tools/list_changed`, which only flows on stdio; for HTTP servers
+  reopen the page or toggle exposure after the server's tool list changes.
 - Project-level configs are only scanned for registered workspaces (plus explicit ones passed by the UI).
 - TOML support covers the subsets MCP clients actually write (tables, arrays, inline tables, dotted keys),
   not the whole TOML 1.0 grammar.

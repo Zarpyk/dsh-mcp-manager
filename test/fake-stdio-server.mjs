@@ -38,11 +38,31 @@ process.stdin.on("data", (chunk) => {
         id: message.id,
         result: {
           tools: [
-            { name: "echo", description: "Echo the input back." },
-            { name: "add", description: "Add two numbers." },
+            {
+              name: "echo",
+              title: "Echo",
+              description: "Echo the input back.",
+              inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+            },
+            {
+              name: "add",
+              title: "Add",
+              description: "Add two numbers.",
+              inputSchema: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } }, required: ["a", "b"] },
+            },
           ],
         },
       });
+    } else if (message.method === "tools/call") {
+      const name = message.params?.name;
+      const args = message.params?.arguments ?? {};
+      if (name === "echo") {
+        send({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: String(args.text ?? "") }] } });
+      } else if (name === "add") {
+        send({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: String(Number(args.a ?? 0) + Number(args.b ?? 0)) }] } });
+      } else {
+        send({ jsonrpc: "2.0", id: message.id, error: { code: -32602, message: `unknown tool ${name}` } });
+      }
     } else if (message.method === "notifications/initialized") {
       // no reply
     } else if (message.id !== undefined) {

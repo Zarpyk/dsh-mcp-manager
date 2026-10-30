@@ -82,6 +82,15 @@ async function callRoute(routes, method, action, body, options = {}) {
   return { status: response.status, json: await response.json() };
 }
 
+async function waitFor(predicate, timeoutMs = 8000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (predicate()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return predicate();
+}
+
 test("the plugin exports the cordis contract", () => {
   assert.equal(name, "mcp-manager");
   assert.deepEqual(inject, ["connection", "tools"]);
@@ -97,7 +106,7 @@ test("state, save, probe, toggle, delete, restore and export round-trip", async 
   });
 
   assert.deepEqual([...routes.keys()].sort(), [`${API}/action`, `${API}/state`]);
-  assert.deepEqual([...tools.keys()].sort(), ["mcp_export_config", "mcp_inventory", "mcp_probe", "mcp_remove_server", "mcp_save_server"]);
+  assert.deepEqual([...tools.keys()].sort(), ["mcp_export_config", "mcp_expose_server", "mcp_inventory", "mcp_probe", "mcp_remove_server", "mcp_save_server"]);
 
   const initial = await callRoute(routes, "GET", "state", undefined);
   assert.equal(initial.status, 200);
@@ -127,6 +136,20 @@ test("state, save, probe, toggle, delete, restore and export round-trip", async 
   const managed = probed.json.data.snapshot.servers.find((server) => server.key === managedKey);
   assert.equal(managed.probe.toolCount, 2);
   assert.equal(managed.probe.serverName, "fake-server");
+
+  // Exposing the pool server must surface its tools on the harness registry.
+  const exposed = await callRoute(routes, "POST", "action", { action: "set-expose", key: managedKey, exposed: true });
+  assert.equal(exposed.json.ok, true, exposed.json.error);
+  assert.ok(await waitFor(() => tools.has("mcp_pool_server_echo")), "bridge did not register the exposed tools");
+  const echoTool = tools.get("mcp_pool_server_echo");
+  const call = await echoTool.execute({ text: "bridge" });
+  assert.equal(call.content[0].text, "bridge");
+  const bridged = exposed.json.data.snapshot.servers.find((server) => server.key === managedKey);
+  assert.equal(bridged.expose, true);
+
+  const unexposed = await callRoute(routes, "POST", "action", { action: "set-expose", key: managedKey, exposed: false });
+  assert.equal(unexposed.json.ok, true, unexposed.json.error);
+  assert.ok(await waitFor(() => !tools.has("mcp_pool_server_echo")), "bridge did not release the exposed tools");
 
   const toggled = await callRoute(routes, "POST", "action", { action: "set-enabled", id: managedKey, enabled: false });
   assert.equal(toggled.json.ok, true);
