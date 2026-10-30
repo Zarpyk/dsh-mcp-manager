@@ -33,7 +33,8 @@ It also registers six agent tools so the model can inspect and maintain the same
 
 ## Chat command
 
-`/mcp` turns exposure on without opening the settings page:
+`/mcp` turns exposure on without opening the settings page, and every pool server also gets its own
+`/mcp-<server>` command so the composer's command palette completes the name for you:
 
 ```text
 /mcp                    what is in the pool and what is exposed right now
@@ -43,7 +44,13 @@ It also registers six agent tools so the model can inspect and maintain the same
 /mcp off <name>         close the session and unregister its tools
 /mcp tools <name>       the tool names currently published
 /mcp test <name>        run the MCP handshake and report latency and tools
+
+/mcp-<server>           one-step expose for that server, e.g. /mcp-unity-mcp
 ```
+
+Type `/mcp-` and the palette lists one entry per pool server (they appear and disappear as the pool
+changes), so the server name never has to be typed from memory. Running an already exposed server's command
+just reports the tools it publishes.
 
 The outcome renders in the conversation and never enters the model's context. Aliases: `ls`, `enable`,
 `disable`, `probe`. Only the plugin's own pool can be exposed — discovered servers stay read-only until you

@@ -198,6 +198,7 @@ test("/mcp command can expose a pool server without leaving the chat", async (t)
   assert.match(empty.text, /pool is empty/);
 
   await tools.get("mcp_save_server").execute({ name: "cmd-server", transport: "stdio", command: process.execPath, args: [FAKE_STDIO] });
+  assert.ok(await waitFor(() => commands.has("mcp-cmd-server")), "the pool server did not get its own /mcp-<name> command");
 
   const listed = await command.handler({ rawInput: " list" });
   assert.equal(listed.kind, "success", listed.text);
@@ -210,6 +211,13 @@ test("/mcp command can expose a pool server without leaving the chat", async (t)
 
   const published = await command.handler({ rawInput: "tools cmd-server" });
   assert.match(published.text, /server tool: echo/);
+
+  const generated = commands.get("mcp-cmd-server");
+  assert.ok(generated, "the generated /mcp-cmd-server command is missing");
+  assert.match(generated.description, /cmd-server/);
+  const viaGenerated = await generated.handler({});
+  assert.equal(viaGenerated.kind, "success", viaGenerated.text);
+  assert.match(viaGenerated.text, /server tool: echo/);
 
   const tested = await command.handler({ rawInput: "test cmd-server" });
   assert.equal(tested.kind, "success", tested.text);
@@ -229,6 +237,9 @@ test("/mcp command can expose a pool server without leaving the chat", async (t)
   const unknown = await command.handler({ rawInput: "nope" });
   assert.equal(unknown.kind, "error");
   assert.match(unknown.text, /Unknown command "nope"/);
+
+  await tools.get("mcp_remove_server").execute({ name: "cmd-server" });
+  assert.ok(await waitFor(() => !commands.has("mcp-cmd-server")), "the per-server command outlived its server");
 });
 
 test("import accepts a bare name -> server map", async () => {
