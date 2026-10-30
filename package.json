@@ -19,10 +19,18 @@
     "LICENSE"
   ],
   "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-client",
+    "mcp-servers",
+    "deepseek-harness",
     "dsh",
     "dsh-plugin",
-    "mcp",
-    "model-context-protocol"
+    "ai-tools",
+    "developer-tools",
+    "claude-code",
+    "cursor",
+    "windsurf"
   ],
   "license": "MIT",
   "author": "Zarpyk",
