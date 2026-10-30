@@ -6,6 +6,8 @@ MCP handshake, and keeps a small editable pool of its own.
 
 Modelled on the idea of `dsh-skills-manager`, but for MCP servers instead of skills — and in English only.
 
+Distributed as **`@zarpyk/dsh-mcp-manager`** (MIT). Source: <https://github.com/Zarpyk/dsh-mcp-manager>.
+
 ## What it does
 
 - **Discovers** MCP servers from the config files of DeepSeek Harness, Claude Desktop / Claude Code, Cursor,
@@ -36,13 +38,19 @@ needed — no rebuild step.
 
 ## Install
 
-The plugin is a normal Harness bundle. From the profile that should load it:
+Published as **`@zarpyk/dsh-mcp-manager`**. From the profile that should load it:
+
+```sh
+dsh plugin --profile <profile> add @zarpyk/dsh-mcp-manager
+```
+
+or, from a checkout of this repository:
 
 ```sh
 plugin_manager install_bundle  # target: this package directory
 ```
 
-or from the Harness UI: Settings → Plugins → install from a local package directory.
+Using the Harness UI: Settings → Plugins → install from npm or from a local package directory.
 
 Requirements: Node.js 20+ (the stdio probe spawns `node`-based servers) and a Harness build that provides
 `@deepseek-ai/dsh-client-ui-slots` and `@deepseek-ai/dsh-client-locale` at `>=0.2.0-rc.1 <0.3.0-0`.
@@ -54,7 +62,7 @@ The bundle patch is intentionally empty apart from the insert row:
 ```yaml
 - insert:
     - id: mcp-manager
-      name: 'dsh-mcp-manager'
+      name: '@zarpyk/dsh-mcp-manager'
 ```
 
 All behaviour is driven from the settings page; there is no required config.

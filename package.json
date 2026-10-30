@@ -1,5 +1,5 @@
 {
-  "name": "dsh-mcp-manager",
+  "name": "@zarpyk/dsh-mcp-manager",
   "version": "1.1.0",
   "description": "Inspect, test and manage MCP server definitions found across DeepSeek Harness and other MCP clients.",
   "type": "module",
@@ -25,6 +25,18 @@
     "model-context-protocol"
   ],
   "license": "MIT",
+  "author": "Zarpyk",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zarpyk/dsh-mcp-manager.git"
+  },
+  "homepage": "https://github.com/Zarpyk/dsh-mcp-manager#readme",
+  "bugs": {
+    "url": "https://github.com/Zarpyk/dsh-mcp-manager/issues"
+  },
   "icon": "assets/icon.svg",
   "dsh": {
     "bundle": {

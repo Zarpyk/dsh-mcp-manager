@@ -64,7 +64,7 @@ function mount() {
 test("the client bundle registers a settings section, a sidebar entry and a panel", async () => {
   await import("../lib/client.js");
 
-  assert.equal(loaded.id, "dsh-mcp-manager");
+  assert.equal(loaded.id, "@zarpyk/dsh-mcp-manager");
   assert.equal(typeof loaded.factory, "function");
 
   const exported = loaded.factory(fakeRequire);
