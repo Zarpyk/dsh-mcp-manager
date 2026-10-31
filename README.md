@@ -19,10 +19,11 @@ Distributed as **`@zarpyk/dsh-mcp-manager`** (MIT). Source: <https://github.com/
   exposes, over stdio, streamable HTTP or legacy SSE. Failures come with a plain-English hint
   (missing executable, 401, DNS, certificate, timeout, unsupported protocol version).
 - **Manages its own pool**: create, edit, enable/disable, soft-delete to trash, restore and export servers.
-- **Exposes tools to the agent**: turn the bridge on for a pool server and every tool it publishes is
-  registered with the harness as `mcp_<server>_<tool>`, callable directly from the conversation — no separate
-  MCP connector plugin needed. Sessions reopen automatically when the server changes and follow
-  `notifications/tools/list_changed`.
+- **Exposes tools to the agent, per chat**: `/mcp-<server>` turns the bridge on for one conversation and
+  every tool that server publishes is registered there as `mcp_<server>_<tool>`, callable directly — no
+  separate MCP connector plugin needed. A chat's own choice always beats the pool-wide switch in
+  Settings → MCP Manager, so a server can be on everywhere and off in one chat (or the other way round).
+  Sessions reopen automatically when the server changes and follow `notifications/tools/list_changed`.
 - **Stays visible even without tools**: an exposed server that publishes nothing gets an `mcp_<server>_status`
   placeholder tool, and a prompt-context line tells the model the MCP is connected but has no tools right now,
   so a disconnected host app is never mistaken for a missing server.
@@ -36,34 +37,32 @@ It also registers six agent tools so the model can inspect and maintain the same
 
 ## Chat command
 
-`/mcp` turns exposure on without opening the settings page, and every pool server also gets its own
-`/mcp-<server>` command so the composer's command palette completes the name for you:
+Exposure is **per chat**. Every pool server gets its own `/mcp-<server>` command, so the composer's
+command palette completes the name for you, and the first run exposes that server in the chat where you
+typed it:
 
 ```text
-/mcp                    what is in the pool and what is exposed right now
-/mcp list               every pool server, its transport and exposure state
-/mcp on <name>          keep a session open and publish its tools to this chat
-/mcp <name>             shorthand for /mcp on <name>
-/mcp off <name>         close the session and unregister its tools
+/mcp-<server>           toggle that server in this chat, e.g. /mcp-unity-mcp
+                        first run: expose its tools here · next run: hide them here
+```
+
+`/mcp` stays available for the finer-grained verbs when you want them:
+
+```text
+/mcp                    what is in the pool and what this chat can call right now
+/mcp list               every pool server, its transport and its state here
+/mcp on <name>          expose a server in this chat
+/mcp <name>             shorthand for toggling it here
+/mcp off <name>         hide it here again
 /mcp tools <name>       the tool names currently published
 /mcp refresh <name>     re-read the server's tool list (use after starting the app behind it)
 /mcp test <name>        run the MCP handshake and report latency and tools
-
-/mcp-<server>           toggle that server, e.g. /mcp-unity-mcp (expose, then hide on the next run)
-/mcp-status             same as /mcp
-/mcp-list               same as /mcp list
-/mcp-on <name>          same as /mcp on <name>
-/mcp-off <name>         same as /mcp off <name>
-/mcp-tools <name>       same as /mcp tools <name>
-/mcp-refresh <name>     same as /mcp refresh <name>
-/mcp-test <name>        same as /mcp test <name>
 ```
 
-Type `/mcp-` and the palette lists every verb plus one entry per pool server (they appear and disappear as
-the pool changes), so neither the verb nor the server name has to be typed from memory. The command registry
-only completes command *names* — it advertises a single free-text hint and offers no argument completion — which
-is why each verb is also registered as its own command. Running `/mcp-<server>` once opens the session and
-publishes its tools; running it again closes the session and unregisters them.
+Local always wins: a choice made in a chat — either direction — beats the pool-wide switch in
+**Settings → MCP Manager**, and only affects that chat. Toggling a server on the settings page changes the
+default for every chat that has not made its own choice. Hiding a pool-wide server in one chat leaves it
+available everywhere else.
 
 Some servers — Unity's relay is the usual example — only publish tools while their host application is
 connected. While such a server is exposed and reports zero tools, the bridge re-reads its list every
@@ -183,6 +182,8 @@ tests point `HOME` and `DSH_HOME` at a temporary directory).
   re-read when you run `/mcp refresh <name>` (or reopen the page). Servers that publish no tools are polled
   every 15 seconds while exposed.
 - Project-level configs are only scanned for registered workspaces (plus explicit ones passed by the UI).
+- Per-chat overrides follow the chat session: a chat opened before the override was set picks it up when it
+  starts its next step, and the override stays in `state.json` for that session id.
 - TOML support covers the subsets MCP clients actually write (tables, arrays, inline tables, dotted keys),
   not the whole TOML 1.0 grammar.
 

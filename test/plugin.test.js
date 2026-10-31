@@ -16,6 +16,49 @@ function createCtx() {
   const tools = new Map();
   const commands = new Map();
   const contexts = [];
+  const restrictions = [];
+  const effects = [];
+  let current;
+
+  // Each chat gets its own agent context, exactly like the harness does.
+  const agents = {
+    currentInitiator() {
+      return current;
+    },
+    use(agent) {
+      current = agent;
+    },
+    open(sessionId) {
+      const agentTools = new Map();
+      const agentCtx = {
+        tools: {
+          register(definition) {
+            agentTools.set(definition.name, definition);
+            return () => agentTools.delete(definition.name);
+          },
+          get(agentToolName) {
+            return agentTools.get(agentToolName);
+          },
+          restrict(filter) {
+            restrictions.push(filter);
+            return () => {};
+          },
+        },
+        effect(callback) {
+          const dispose = callback();
+          return () => dispose?.();
+        },
+        get() {
+          return undefined;
+        },
+        logger: () => null,
+      };
+      const agent = { id: sessionId, ctx: agentCtx };
+      current = agent;
+      return { agent, tools: agentTools, restrictions };
+    },
+  };
+
   const ctx = {
     connection: {
       fetch: {
@@ -48,14 +91,35 @@ function createCtx() {
     },
     effect(callback) {
       const dispose = callback();
+      effects.push(dispose);
       return () => dispose?.();
     },
     get(service) {
-      return service === "systemPrompt" ? ctx.systemPrompt : undefined;
+      if (service === "systemPrompt") return ctx.systemPrompt;
+      if (service === "agents") return agents;
+      return undefined;
     },
     logger: () => null,
   };
-  return { ctx, routes, tools, commands, contexts };
+  ctx.stop = () => {
+    for (const dispose of effects.reverse()) {
+      try {
+        dispose?.();
+      } catch {
+        /* teardown must not mask a test failure */
+      }
+    }
+  };
+  return {
+    ctx,
+    routes,
+    tools,
+    commands,
+    contexts,
+    agents,
+    restrictions,
+    stop: ctx.stop,
+  };
 }
 
 function setupSandbox() {
@@ -119,6 +183,7 @@ test("state, save, probe, toggle, delete, restore and export round-trip", async 
   const { ctx, routes, tools } = createCtx();
   apply(ctx, {});
   t.after(() => {
+    ctx.stop?.();
     for (const dispose of [...tools.values()].map((definition) => definition.dispose).filter(Boolean)) dispose();
   });
 
@@ -191,11 +256,12 @@ test("state, save, probe, toggle, delete, restore and export round-trip", async 
   assert.deepEqual(emptied.json.data.snapshot.trash, []);
 });
 
-test("/mcp command can expose a pool server without leaving the chat", async (t) => {
+test("/mcp toggles a pool server for the chat it runs in", async (t) => {
   setupSandbox();
-  const { ctx, tools, commands } = createCtx();
+  const { ctx, tools, commands, agents } = createCtx();
   apply(ctx, {});
   t.after(() => {
+    ctx.stop?.();
     for (const dispose of [...tools.values()].map((definition) => definition.dispose).filter(Boolean)) dispose();
   });
 
@@ -203,14 +269,12 @@ test("/mcp command can expose a pool server without leaving the chat", async (t)
   assert.ok(command, "/mcp was not registered");
   assert.equal(command.name, "mcp");
 
-  // Each verb is its own command, so the palette completes `/mcp-` into status/list/on/off/…
+  // The standalone verb commands were removed: one /mcp plus one /mcp-<server> per entry.
   for (const verb of ["status", "list", "on", "off", "tools", "test", "refresh"]) {
-    assert.ok(commands.has(`mcp-${verb}`), `the /mcp-${verb} command is missing`);
+    assert.equal(commands.has(`mcp-${verb}`), false, `the removed /mcp-${verb} command is still registered`);
   }
-  const verbList = await commands.get("mcp-list").handler({ rawInput: "" });
-  assert.equal(verbList.kind, "success", verbList.text);
-  assert.match(verbList.text, /pool is empty/i);
 
+  const chat = agents.open("session-test-1");
   const empty = await command.handler({ rawInput: "" });
   assert.equal(empty.kind, "success");
   assert.match(empty.text, /pool is empty/);
@@ -222,38 +286,45 @@ test("/mcp command can expose a pool server without leaving the chat", async (t)
   assert.equal(listed.kind, "success", listed.text);
   assert.match(listed.text, /cmd-server \[stdio\] enabled — not exposed/);
 
-  const exposed = await command.handler({ rawInput: " cmd-server" });
+  const generated = commands.get("mcp-cmd-server");
+  assert.ok(generated, "the generated /mcp-cmd-server command is missing");
+  const exposed = await generated.handler({});
   assert.equal(exposed.kind, "success", exposed.text);
+  assert.match(exposed.text, /exposed in this chat/);
   assert.match(exposed.text, /mcp_cmd_server_echo/);
-  assert.ok(tools.has("mcp_cmd_server_echo"), "the command did not publish the server tools");
+  assert.ok(chat.tools.has("mcp_cmd_server_echo"), "the command did not publish the server tools into the chat");
+  assert.equal(tools.has("mcp_cmd_server_echo"), false, "a chat-only exposure leaked into the global registry");
 
   const published = await command.handler({ rawInput: "tools cmd-server" });
   assert.match(published.text, /server tool: echo/);
 
-  const generated = commands.get("mcp-cmd-server");
-  assert.ok(generated, "the generated /mcp-cmd-server command is missing");
-  assert.match(generated.description, /cmd-server/);
-
   const hiddenAgain = await generated.handler({});
   assert.equal(hiddenAgain.kind, "success", hiddenAgain.text);
-  assert.match(hiddenAgain.text, /no longer exposed/);
-  assert.ok(await waitFor(() => !tools.has("mcp_cmd_server_echo")), "the generated command did not hide the tools");
+  assert.match(hiddenAgain.text, /no longer exposed in this chat/);
+  assert.ok(await waitFor(() => !chat.tools.has("mcp_cmd_server_echo")), "the generated command did not hide the tools");
 
   const shownAgain = await generated.handler({});
   assert.equal(shownAgain.kind, "success", shownAgain.text);
   assert.match(shownAgain.text, /is exposed/);
-  assert.ok(tools.has("mcp_cmd_server_echo"), "the generated command did not bring the tools back");
+  assert.ok(chat.tools.has("mcp_cmd_server_echo"), "the generated command did not bring the tools back");
+
+  // A second chat is untouched by the first one's choice.
+  agents.open("session-test-2");
+  const otherTools = await command.handler({ rawInput: "tools cmd-server" });
+  assert.equal(otherTools.kind, "error");
+  assert.match(otherTools.text, /not exposed in this chat/);
+
+  agents.use(chat.agent);
+  const status = await command.handler({ rawInput: "status" });
+  assert.match(status.text, /1 pool server\(s\), 1 callable in this chat/);
 
   const tested = await command.handler({ rawInput: "test cmd-server" });
   assert.equal(tested.kind, "success", tested.text);
   assert.match(tested.text, /fake-server/);
 
-  const status = await command.handler({ rawInput: "status" });
-  assert.match(status.text, /1 pool server\(s\), 1 exposed/);
-
   const hidden = await command.handler({ rawInput: " off cmd-server" });
   assert.equal(hidden.kind, "success", hidden.text);
-  assert.ok(await waitFor(() => !tools.has("mcp_cmd_server_echo")), "the command left the tools registered");
+  assert.ok(await waitFor(() => !chat.tools.has("mcp_cmd_server_echo")), "the command left the tools registered");
 
   const missing = await command.handler({ rawInput: "on nope" });
   assert.equal(missing.kind, "error");
@@ -269,9 +340,10 @@ test("/mcp command can expose a pool server without leaving the chat", async (t)
 
 test("/mcp explains a server that publishes no tools and refreshes it on demand", async (t) => {
   setupSandbox();
-  const { ctx, tools, commands, contexts } = createCtx();
+  const { ctx, tools, commands, contexts, agents, restrictions } = createCtx();
   apply(ctx, {});
   t.after(() => {
+    ctx.stop?.();
     for (const dispose of [...tools.values()].map((definition) => definition.dispose).filter(Boolean)) dispose();
   });
 
@@ -292,10 +364,22 @@ test("/mcp explains a server that publishes no tools and refreshes it on demand"
   assert.match(prompt, /unity-like/);
   assert.match(prompt, /publishes no tools/);
 
-  const exposed = await command.handler({ rawInput: " unity-like" });
-  assert.equal(exposed.kind, "success", exposed.text);
-  assert.match(exposed.text, /publishes no tools/);
-  assert.match(exposed.text, /Unity, for example/);
+  agents.open("session-empty");
+  // The pool exposes it to every chat, so this chat can hide it locally and bring it back.
+  const hidden = await command.handler({ rawInput: " unity-like" });
+  assert.equal(hidden.kind, "success", hidden.text);
+  assert.match(hidden.text, /no longer exposed in this chat/);
+  assert.ok(restrictions.length > 0, "hiding a pool server in one chat did not scope the global tools away");
+  assert.doesNotMatch(promptContext.text(), /unity-like/, "the hidden server is still advertised to this chat");
+
+  const hiddenTools = await command.handler({ rawInput: "tools unity-like" });
+  assert.equal(hiddenTools.kind, "error");
+  assert.match(hiddenTools.text, /not exposed in this chat/);
+
+  const shown = await command.handler({ rawInput: "on unity-like" });
+  assert.equal(shown.kind, "success", shown.text);
+  assert.match(shown.text, /publishes no tools/);
+  assert.match(shown.text, /Unity, for example/);
 
   const toolsList = await command.handler({ rawInput: "tools unity-like" });
   assert.equal(toolsList.kind, "success", toolsList.text);
@@ -308,7 +392,7 @@ test("/mcp explains a server that publishes no tools and refreshes it on demand"
 
   const off = await command.handler({ rawInput: "off unity-like" });
   assert.equal(off.kind, "success", off.text);
-  assert.match(off.text, /no longer exposed/);
+  assert.match(off.text, /no longer exposed in this chat/);
 
   const missing = await command.handler({ rawInput: "refresh nope" });
   assert.equal(missing.kind, "error");
