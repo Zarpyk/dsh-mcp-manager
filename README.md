@@ -43,6 +43,7 @@ It also registers six agent tools so the model can inspect and maintain the same
 /mcp <name>             shorthand for /mcp on <name>
 /mcp off <name>         close the session and unregister its tools
 /mcp tools <name>       the tool names currently published
+/mcp refresh <name>     re-read the server's tool list (use after starting the app behind it)
 /mcp test <name>        run the MCP handshake and report latency and tools
 
 /mcp-<server>           toggle that server, e.g. /mcp-unity-mcp (expose, then hide on the next run)
@@ -52,8 +53,13 @@ Type `/mcp-` and the palette lists one entry per pool server (they appear and di
 changes), so the server name never has to be typed from memory. Running the command once opens the session
 and publishes its tools; running it again closes the session and unregisters them.
 
+Some servers — Unity's relay is the usual example — only publish tools while their host application is
+connected. While such a server is exposed and reports zero tools, the bridge re-reads its list every
+15 seconds, so the tools appear on their own once the app connects; `/mcp refresh <name>` forces that read
+immediately.
+
 The outcome renders in the conversation and never enters the model's context. Aliases: `ls`, `enable`,
-`disable`, `probe`. Only the plugin's own pool can be exposed — discovered servers stay read-only until you
+`disable`, `probe`, `reload`. Only the plugin's own pool can be exposed — discovered servers stay read-only until you
 copy them into the pool.
 
 ## Where it shows up
@@ -158,8 +164,9 @@ tests point `HOME` and `DSH_HOME` at a temporary directory).
 - Tool exposure covers **pool** servers (the plugin's own store). Servers found in other clients' config files
   stay read-only: use **Copy to pool** first, then expose them.
 - Exposure supports stdio and streamable HTTP servers. Legacy SSE endpoints can be probed but not exposed yet.
-- Live tool refresh relies on `notifications/tools/list_changed`, which only flows on stdio; for HTTP servers
-  reopen the page or toggle exposure after the server's tool list changes.
+- Live tool refresh relies on `notifications/tools/list_changed`, which only flows on stdio; HTTP servers are
+  re-read when you run `/mcp refresh <name>` (or reopen the page). Servers that publish no tools are polled
+  every 15 seconds while exposed.
 - Project-level configs are only scanned for registered workspaces (plus explicit ones passed by the UI).
 - TOML support covers the subsets MCP clients actually write (tables, arrays, inline tables, dotted keys),
   not the whole TOML 1.0 grammar.

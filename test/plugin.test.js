@@ -249,6 +249,44 @@ test("/mcp command can expose a pool server without leaving the chat", async (t)
   assert.ok(await waitFor(() => !commands.has("mcp-cmd-server")), "the per-server command outlived its server");
 });
 
+test("/mcp explains a server that publishes no tools and refreshes it on demand", async (t) => {
+  setupSandbox();
+  const { ctx, tools, commands } = createCtx();
+  apply(ctx, {});
+  t.after(() => {
+    for (const dispose of [...tools.values()].map((definition) => definition.dispose).filter(Boolean)) dispose();
+  });
+
+  await tools
+    .get("mcp_save_server")
+    .execute({ name: "unity-like", transport: "stdio", command: process.execPath, args: [FAKE_STDIO], env: { FAKE_EMPTY: "1" }, expose: true });
+  const command = commands.get("mcp");
+  assert.ok(await waitFor(() => commands.has("mcp-unity-like")), "the empty server did not get its command");
+  await waitFor(() => !tools.has("mcp_unity_like_echo"));
+
+  const exposed = await command.handler({ rawInput: " unity-like" });
+  assert.equal(exposed.kind, "success", exposed.text);
+  assert.match(exposed.text, /publishes no tools/);
+  assert.match(exposed.text, /Unity, for example/);
+
+  const toolsList = await command.handler({ rawInput: "tools unity-like" });
+  assert.equal(toolsList.kind, "success", toolsList.text);
+  assert.match(toolsList.text, /publishes no tools right now/);
+  assert.match(toolsList.text, /\/mcp refresh unity-like/);
+
+  const refreshed = await command.handler({ rawInput: "refresh unity-like" });
+  assert.equal(refreshed.kind, "success", refreshed.text);
+  assert.match(refreshed.text, /still publishes no tools/);
+
+  const off = await command.handler({ rawInput: "off unity-like" });
+  assert.equal(off.kind, "success", off.text);
+  assert.match(off.text, /no longer exposed/);
+
+  const missing = await command.handler({ rawInput: "refresh nope" });
+  assert.equal(missing.kind, "error");
+  assert.match(missing.text, /No pool server named "nope"/);
+});
+
 test("import accepts a bare name -> server map", async () => {
   setupSandbox();
   const { ctx, routes } = createCtx();

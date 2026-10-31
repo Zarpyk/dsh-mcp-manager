@@ -1,6 +1,6 @@
 {
   "name": "@zarpyk/dsh-mcp-manager",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Inspect, probe and manage MCP servers across every AI client on your machine, and expose their tools to the agent without a separate connector.",
   "type": "module",
   "main": "lib/index.js",
