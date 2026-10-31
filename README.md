@@ -23,6 +23,9 @@ Distributed as **`@zarpyk/dsh-mcp-manager`** (MIT). Source: <https://github.com/
   registered with the harness as `mcp_<server>_<tool>`, callable directly from the conversation — no separate
   MCP connector plugin needed. Sessions reopen automatically when the server changes and follow
   `notifications/tools/list_changed`.
+- **Stays visible even without tools**: an exposed server that publishes nothing gets an `mcp_<server>_status`
+  placeholder tool, and a prompt-context line tells the model the MCP is connected but has no tools right now,
+  so a disconnected host app is never mistaken for a missing server.
 - **Exports** the pool as `mcpServers` JSON, VS Code `servers` JSON or Codex `config.toml`.
 - **Imports** an existing config document by pasting it.
 - **Never rewrites other applications' files.** Discovered entries are strictly read-only; the pool lives in
@@ -47,16 +50,28 @@ It also registers six agent tools so the model can inspect and maintain the same
 /mcp test <name>        run the MCP handshake and report latency and tools
 
 /mcp-<server>           toggle that server, e.g. /mcp-unity-mcp (expose, then hide on the next run)
+/mcp-status             same as /mcp
+/mcp-list               same as /mcp list
+/mcp-on <name>          same as /mcp on <name>
+/mcp-off <name>         same as /mcp off <name>
+/mcp-tools <name>       same as /mcp tools <name>
+/mcp-refresh <name>     same as /mcp refresh <name>
+/mcp-test <name>        same as /mcp test <name>
 ```
 
-Type `/mcp-` and the palette lists one entry per pool server (they appear and disappear as the pool
-changes), so the server name never has to be typed from memory. Running the command once opens the session
-and publishes its tools; running it again closes the session and unregisters them.
+Type `/mcp-` and the palette lists every verb plus one entry per pool server (they appear and disappear as
+the pool changes), so neither the verb nor the server name has to be typed from memory. The command registry
+only completes command *names* — it advertises a single free-text hint and offers no argument completion — which
+is why each verb is also registered as its own command. Running `/mcp-<server>` once opens the session and
+publishes its tools; running it again closes the session and unregisters them.
 
 Some servers — Unity's relay is the usual example — only publish tools while their host application is
 connected. While such a server is exposed and reports zero tools, the bridge re-reads its list every
 15 seconds, so the tools appear on their own once the app connects; `/mcp refresh <name>` forces that read
-immediately.
+immediately. Until tools show up the server is still visible to the agent: the bridge registers one
+`mcp_<server>_status` placeholder tool for it (calling it re-reads the list and explains what to do) and a
+prompt-context line names the server, its transport and its current state, so the model knows the MCP is
+connected but has no tools instead of assuming it is missing.
 
 The outcome renders in the conversation and never enters the model's context. Aliases: `ls`, `enable`,
 `disable`, `probe`, `reload`. Only the plugin's own pool can be exposed — discovered servers stay read-only until you

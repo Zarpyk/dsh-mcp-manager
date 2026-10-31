@@ -15,6 +15,7 @@ function createCtx() {
   const routes = new Map();
   const tools = new Map();
   const commands = new Map();
+  const contexts = [];
   const ctx = {
     connection: {
       fetch: {
@@ -36,16 +37,25 @@ function createCtx() {
         return () => commands.delete(definition.name);
       },
     },
+    systemPrompt: {
+      context(definition) {
+        contexts.push(definition);
+        return () => {
+          const index = contexts.indexOf(definition);
+          if (index >= 0) contexts.splice(index, 1);
+        };
+      },
+    },
     effect(callback) {
       const dispose = callback();
       return () => dispose?.();
     },
-    get() {
-      return undefined;
+    get(service) {
+      return service === "systemPrompt" ? ctx.systemPrompt : undefined;
     },
     logger: () => null,
   };
-  return { ctx, routes, tools, commands };
+  return { ctx, routes, tools, commands, contexts };
 }
 
 function setupSandbox() {
@@ -100,7 +110,7 @@ async function waitFor(predicate, timeoutMs = 8000) {
 
 test("the plugin exports the cordis contract", () => {
   assert.equal(name, "mcp-manager");
-  assert.deepEqual(inject, ["connection", "tools", "commands"]);
+  assert.deepEqual(inject, ["connection", "tools", "commands", "systemPrompt"]);
   assert.equal(typeof apply, "function");
 });
 
@@ -193,6 +203,14 @@ test("/mcp command can expose a pool server without leaving the chat", async (t)
   assert.ok(command, "/mcp was not registered");
   assert.equal(command.name, "mcp");
 
+  // Each verb is its own command, so the palette completes `/mcp-` into status/list/on/off/…
+  for (const verb of ["status", "list", "on", "off", "tools", "test", "refresh"]) {
+    assert.ok(commands.has(`mcp-${verb}`), `the /mcp-${verb} command is missing`);
+  }
+  const verbList = await commands.get("mcp-list").handler({ rawInput: "" });
+  assert.equal(verbList.kind, "success", verbList.text);
+  assert.match(verbList.text, /pool is empty/i);
+
   const empty = await command.handler({ rawInput: "" });
   assert.equal(empty.kind, "success");
   assert.match(empty.text, /pool is empty/);
@@ -251,7 +269,7 @@ test("/mcp command can expose a pool server without leaving the chat", async (t)
 
 test("/mcp explains a server that publishes no tools and refreshes it on demand", async (t) => {
   setupSandbox();
-  const { ctx, tools, commands } = createCtx();
+  const { ctx, tools, commands, contexts } = createCtx();
   apply(ctx, {});
   t.after(() => {
     for (const dispose of [...tools.values()].map((definition) => definition.dispose).filter(Boolean)) dispose();
@@ -263,6 +281,16 @@ test("/mcp explains a server that publishes no tools and refreshes it on demand"
   const command = commands.get("mcp");
   assert.ok(await waitFor(() => commands.has("mcp-unity-like")), "the empty server did not get its command");
   await waitFor(() => !tools.has("mcp_unity_like_echo"));
+
+  assert.ok(await waitFor(() => tools.has("mcp_unity_like_status")), "the empty server did not get a placeholder tool");
+  const placeholder = await tools.get("mcp_unity_like_status").execute({});
+  assert.match(placeholder.text, /still publishes no tools/);
+
+  const promptContext = contexts[0];
+  assert.ok(promptContext, "no prompt context was registered");
+  const prompt = promptContext.text();
+  assert.match(prompt, /unity-like/);
+  assert.match(prompt, /publishes no tools/);
 
   const exposed = await command.handler({ rawInput: " unity-like" });
   assert.equal(exposed.kind, "success", exposed.text);
