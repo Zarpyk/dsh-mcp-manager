@@ -45,12 +45,12 @@ It also registers six agent tools so the model can inspect and maintain the same
 /mcp tools <name>       the tool names currently published
 /mcp test <name>        run the MCP handshake and report latency and tools
 
-/mcp-<server>           one-step expose for that server, e.g. /mcp-unity-mcp
+/mcp-<server>           toggle that server, e.g. /mcp-unity-mcp (expose, then hide on the next run)
 ```
 
 Type `/mcp-` and the palette lists one entry per pool server (they appear and disappear as the pool
-changes), so the server name never has to be typed from memory. Running an already exposed server's command
-just reports the tools it publishes.
+changes), so the server name never has to be typed from memory. Running the command once opens the session
+and publishes its tools; running it again closes the session and unregisters them.
 
 The outcome renders in the conversation and never enters the model's context. Aliases: `ls`, `enable`,
 `disable`, `probe`. Only the plugin's own pool can be exposed — discovered servers stay read-only until you

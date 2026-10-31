@@ -215,9 +215,16 @@ test("/mcp command can expose a pool server without leaving the chat", async (t)
   const generated = commands.get("mcp-cmd-server");
   assert.ok(generated, "the generated /mcp-cmd-server command is missing");
   assert.match(generated.description, /cmd-server/);
-  const viaGenerated = await generated.handler({});
-  assert.equal(viaGenerated.kind, "success", viaGenerated.text);
-  assert.match(viaGenerated.text, /server tool: echo/);
+
+  const hiddenAgain = await generated.handler({});
+  assert.equal(hiddenAgain.kind, "success", hiddenAgain.text);
+  assert.match(hiddenAgain.text, /no longer exposed/);
+  assert.ok(await waitFor(() => !tools.has("mcp_cmd_server_echo")), "the generated command did not hide the tools");
+
+  const shownAgain = await generated.handler({});
+  assert.equal(shownAgain.kind, "success", shownAgain.text);
+  assert.match(shownAgain.text, /is exposed/);
+  assert.ok(tools.has("mcp_cmd_server_echo"), "the generated command did not bring the tools back");
 
   const tested = await command.handler({ rawInput: "test cmd-server" });
   assert.equal(tested.kind, "success", tested.text);
